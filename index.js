@@ -82,8 +82,7 @@ module.exports = function etcdProxy(opts) {
             hostname: os.hostname(),
             address: host + ':' + port,
             env: process.env.NODE_ENV,
-            totalmem: os.totalmem(),
-            freemem: os.freemem(),
+            memoryUsage: process.memoryUsage(),
             date: new Date(),
             toobusy: toobusy(),
             pid: process.pid
@@ -125,4 +124,10 @@ module.exports = function etcdProxy(opts) {
     });
     return _config;
   }
+
+  process.on('exit', function () {
+    if (port) {
+      etcd.del(genSetKey());
+    }
+  });
 };

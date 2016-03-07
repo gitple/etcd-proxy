@@ -31,8 +31,7 @@ register a service to etcd for interval. value like:
     "hostname": "nswbmw.local",
     "address": "10.10.10.63:62822",
     "env": "test",
-    "totalmem": 8589934592,
-    "freemem": 857034752,
+    "memoryUsage": { "rss": 21254144, "heapTotal": 9472608, "heapUsed": 4474536 },
     "date": "2016-03-07T10:17:46.992Z",
     "toobusy": false,
     "pid": 45717
