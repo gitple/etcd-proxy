@@ -34,7 +34,8 @@ register a service to etcd for interval. value like:
     "totalmem": 8589934592,
     "freemem": 857034752,
     "date": "2016-03-07T10:17:46.992Z",
-    "toobusy": false
+    "toobusy": false,
+    "pid": 45717
 }
 ```
 

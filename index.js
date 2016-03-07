@@ -85,7 +85,8 @@ module.exports = function etcdProxy(opts) {
             totalmem: os.totalmem(),
             freemem: os.freemem(),
             date: new Date(),
-            toobusy: toobusy()
+            toobusy: toobusy(),
+            pid: process.pid
           }), {
             ttl: ttl * 2,
             maxRetries: maxRetries
