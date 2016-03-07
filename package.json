@@ -1,0 +1,31 @@
+{
+  "name": "etcd-proxy",
+  "version": "1.0.0",
+  "description": "Node.js service registry and discovery on top of etcd.",
+  "main": "index.js",
+  "scripts": {
+    "test": "NODE_ENV=test node example"
+  },
+  "keywords": [
+    "etcd",
+    "service",
+    "registry",
+    "discovery"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "get-port": "^2.1.0",
+    "ip": "^1.1.2",
+    "ms": "^0.7.1",
+    "node-etcd": "^4.2.1",
+    "toobusy-js": "^0.4.3"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nswbmw/etcd-proxy"
+  },
+  "devDependencies": {
+    "koa": "^1.2.0",
+    "koa-router": "^5.4.0"
+  }
+}
