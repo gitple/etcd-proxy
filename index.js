@@ -23,9 +23,9 @@ module.exports = function etcdProxy(opts) {
   var port = opts.port;
   var _getPort;
 
+  var setTimer; 
   var config = {};
-  var setTimer;
-  var getTimer;
+  var watchers = {};
 
   return {
     register: function() {
@@ -43,13 +43,14 @@ module.exports = function etcdProxy(opts) {
       if (!name) {
         throw new TypeError('No service name.');
       }
-      if (!getTimer) {
-        getTimer = setInterval(function () {
-          config = discover();
-        }, ttl * 1000);
+      if (!watchers[name]) {
+        watchers[name] = etcd.watcher(genGetKey());
+        watchers[name].on('change', function () {
+          config[name] = discover(name);
+        });
       }
-      if (!Object.keys(config).length) {
-        config = discover();
+      if (!config[name]) {
+        config[name] = discover(name);
       }
       var urls = config[name] || [];
       // return random url
@@ -97,37 +98,36 @@ module.exports = function etcdProxy(opts) {
       });
   }
 
-  function discover(_index) {
+  function genGetKey() {
+    return prefix + '/' + name;
+  }
+
+  function discover(name, _index) {
     _index = _index || 0;
-    var res = etcd.getSync(prefix, { recursive: true });
+    var res = etcd.getSync(genGetKey(), { recursive: true });
     if (res.err) {
       console.error(res.err);
       if (_index < maxRetries) {
-        return discover(++_index);
+        return discover(name, ++_index);
       }
       return [];
     }
     var nodes = res.body.node.nodes || [];
     if (!nodes.length) {
       if (_index < maxRetries) {
-        return discover(++_index);
+        return discover(name, ++_index);
       }
       console.error('No available services.');
     }
-    var _config = {};
-    nodes.forEach(function (node) {
-      var key = node.key.replace(prefix + '/', '');
-      var urls = (node.nodes || []).map(function (node) {
-        return JSON.parse(node.value).address;
-      });
-      _config[key] = urls;
+    config[name] = nodes.map(function (node) {
+      return JSON.parse(node.value).address;
     });
-    return _config;
+    return config[name];
   }
 
   process.on('exit', function () {
     if (port) {
-      etcd.del(genSetKey());
+      etcd.delSync(genSetKey());
     }
   });
 };
