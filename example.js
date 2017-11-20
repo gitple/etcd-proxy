@@ -1,20 +1,16 @@
-'use strict';
-
-var app = require('koa')();
-var router = require('koa-router')();
-var etcdProxy = require('./')({
-  etcd: ['10.10.10.9:4001'],
+const Koa = require('koa')
+const etcdProxy = require('./')({
+  hosts: ['localhost:2379'],
   name: 'api'
-});
+})
+const app = new Koa()
 
-etcdProxy.register().then(function (port) {
-  app.listen(port, function () {
-    console.log('listening on port %s', port);
-  });
-});
+app.use(async (ctx) => {
+  ctx.body = await etcdProxy.discover('api')
+})
 
-app.use(router.routes());
-
-router.get('/', function* () {
-  this.body = etcdProxy.discover('api');
-});
+etcdProxy.register().then((port) => {
+  app.listen(port, () => {
+    console.log(`listening on port ${port}`)
+  })
+})

@@ -1,133 +1,121 @@
-'use strict';
+const ip = require('ip')
+const Etcd = require('node-etcd')
+const getPort = require('get-port')
 
-var os = require('os');
-var ms = require('ms');
-var ip = require('ip');
-var Etcd = require('node-etcd');
-var toobusy = require('toobusy-js');
-
-module.exports = function etcdProxy(opts) {
-  if (!opts.etcd) {
-    throw new TypeError('No etcd url.');
+module.exports = function etcdProxy (opts) {
+  opts = opts || {}
+  if (!opts.hosts) {
+    throw new TypeError('No etcd url.')
   }
-  var name = opts.name;
-  var etcd = Array.isArray(opts.etcd) ? new Etcd(opts.etcd) : new Etcd([opts.etcd]);
-  var ttl = Math.floor(ms(opts.ttl || '1m') / 1000);
-  var prefix = (opts.prefix || process.env.NODE_ENV);
-  if (!prefix) {
-    throw new TypeError('No prefix.');
+  const name = opts.name
+  const etcd = new Etcd(opts.hosts)
+  const ttl = opts.ttl || 5
+  let prefix = opts.prefix || ''
+  if (prefix) {
+    prefix = prefix[0] === '/' ? prefix : `/${prefix}`
   }
-  prefix = prefix[0] === '/' ? prefix : '/' + prefix;
-  var maxRetries = opts.maxRetries || 3;
-  var host = opts.host || ip.address();
-  var port = opts.port;
-  var _getPort;
+  const maxRetries = opts.maxRetries || 3
+  const host = opts.host || ip.address()
+  let port = opts.port
 
-  var setTimer; 
-  var config = {};
-  var watchers = {};
+  let timer
+  const serviceLists = {}
+  const serviceWatchers = {}
+
+  process.on('exit', () => {
+    if (port) {
+      etcd.delSync(genSetKey())
+    }
+  })
 
   return {
-    register: function() {
+    register: async function () {
       if (!name) {
-        throw new TypeError('No service name.');
+        throw new TypeError('No register service name.')
       }
-      if (!setTimer) {
-        setTimer = setInterval(function () {
-          register();
-        }, ttl * 1000);
+      if (!timer) {
+        timer = setInterval(register, ttl * 1000)
       }
-      return register();
+      return register()
     },
-    discover: function(name) {
+    discover: async function (name) {
       if (!name) {
-        throw new TypeError('No service name.');
+        throw new TypeError('No discover service name.')
       }
-      if (!watchers[name]) {
-        watchers[name] = etcd.watcher(genGetKey());
-        watchers[name].on('change', function () {
-          config[name] = discover(name);
-        });
+      if (!serviceWatchers[name]) {
+        serviceWatchers[name] = etcd.watcher(genGetKey())
+        serviceWatchers[name].on('change', () => {
+          discover(name).then(address => {
+            serviceLists[name] = address
+          })
+        })
       }
-      if (!config[name]) {
-        config[name] = discover(name);
+      if (!serviceLists[name]) {
+        serviceLists[name] = await discover(name)
       }
-      var urls = config[name] || [];
+      const urls = serviceLists[name] || []
       // return random url
-      return urls[Math.floor(Math.random() * urls.length)];
+      return urls[Math.floor(Math.random() * urls.length)]
     }
-  };
+  }
 
-  function getPort() {
+  function _getPort () {
     if (port) {
-      return Promise.resolve(port);
+      return Promise.resolve(port)
     }
-    if (!_getPort) {
-      _getPort = require('get-port')().then(function (_port) {
-        port = _port;
-        return port;
-      });
-    }
-    return _getPort;
+    return getPort().then((_port) => {
+      port = _port
+      return port
+    })
   }
 
-  function genSetKey() {
-    return prefix + '/' + name + '/' + host + ':' + port;
+  function genSetKey () {
+    return `${prefix}/${name}/${host}:${port}`
   }
 
-  function register() {
-    return getPort()
-      .then(function () {
-        return new Promise(function (resolve, reject) {
-          etcd.set(genSetKey(), JSON.stringify({
-            hostname: os.hostname(),
-            address: host + ':' + port,
-            env: process.env.NODE_ENV,
-            memoryUsage: process.memoryUsage(),
-            date: new Date(),
-            toobusy: toobusy(),
-            pid: process.pid
-          }), {
-            ttl: ttl * 2,
-            maxRetries: maxRetries
-          }, function (err) {
-            if (err) return reject(err);
-            resolve(port);
-          });
-        });
-      });
+  function register () {
+    return _getPort().then(() => {
+      return new Promise((resolve, reject) => {
+        etcd.set(
+          genSetKey(),
+          `${host}:${port}`,
+          { ttl, maxRetries },
+          (err) => {
+            if (err) return reject(err)
+            resolve(port)
+          }
+        )
+      })
+    })
   }
 
-  function genGetKey() {
-    return prefix + '/' + name;
+  function genGetKey () {
+    return `${prefix}/${name}`
   }
 
-  function discover(name, _index) {
-    _index = _index || 0;
-    var res = etcd.getSync(genGetKey(), { recursive: true });
-    if (res.err) {
-      console.error(res.err);
-      if (_index < maxRetries) {
-        return discover(name, ++_index);
-      }
-      return [];
-    }
-    var nodes = res.body.node.nodes || [];
-    if (!nodes.length) {
-      if (_index < maxRetries) {
-        return discover(name, ++_index);
-      }
-      console.error('No available services.');
-    }
-    config[name] = nodes.map(function (node) {
-      return JSON.parse(node.value).address;
-    });
-    return config[name];
+  function discover (name, _retryTime) {
+    _retryTime = _retryTime || 0
+    return new Promise((resolve, reject) => {
+      etcd.get(genGetKey(), { recursive: true }, (err, res) => {
+        if (err) {
+          console.error(err)
+          if (_retryTime < maxRetries) {
+            return resolve(discover(name, ++_retryTime))
+          }
+          return resolve([])
+        }
+        const nodes = res.node.nodes || []
+        if (!nodes.length) {
+          if (_retryTime < maxRetries) {
+            return resolve(discover(name, ++_retryTime))
+          }
+          console.error(`No available '${name}' serviceLists.`)
+        }
+        serviceLists[name] = nodes.map((node) => {
+          return node.value
+        })
+        return resolve(serviceLists[name])
+      })
+    })
   }
-
-  process.on('exit', function () {
-    if (port) {
-      etcd.delSync(genSetKey());
-    }
-  });
-};
+}
