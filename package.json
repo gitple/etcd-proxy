@@ -17,7 +17,7 @@
   "dependencies": {
     "get-port": "3.2.0",
     "ip": "1.1.5",
-    "node-etcd": "5.1.0"
+    "node-etcd": "7.0.0"
   },
   "repository": {
     "type": "git",
